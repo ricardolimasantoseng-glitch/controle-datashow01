@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Controle Datashow BenQ</title>
+<style>
+:root{--bg:#14161a;--panel:#1f2329;--btn:#2d333b;--btn2:#3a424d;--tx:#e8ecf1;--mut:#8b95a3;--ac:#4aa3ff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;display:flex;justify-content:center}
+.wrap{width:100%;max-width:420px;padding:14px 14px 40px}
+h1{font-size:16px;margin:4px 0 12px;text-align:center;color:var(--mut);font-weight:600;letter-spacing:.5px}
+.remote{background:var(--panel);border-radius:28px;padding:18px;display:grid;gap:14px}
+.row{display:grid;gap:8px}
+.c2{grid-template-columns:1fr 1fr}.c3{grid-template-columns:repeat(3,1fr)}
+button{background:var(--btn);color:var(--tx);border:0;border-radius:12px;padding:14px 4px;font-size:13px;font-weight:600;cursor:pointer;touch-action:manipulation}
+button:active{background:var(--ac);transform:scale(.96)}
+.on{background:#1f9d55}.off{background:#d63a3a}
+.dpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:var(--btn);border-radius:50%;padding:18px;aspect-ratio:1}
+.dpad button{background:var(--btn2);font-size:20px;border-radius:50%}
+.dpad .ok{background:var(--ac);color:#06121f}
+.sep{height:1px;background:#2f353d}
+.status{background:#0d0f12;border-radius:12px;padding:10px;font:12px ui-monospace,monospace;color:var(--mut);min-height:46px}
+.status b{color:var(--ac)}
+details{margin-top:14px;background:var(--panel);border-radius:16px;padding:12px;font-size:13px}
+summary{cursor:pointer;font-weight:600}
+label{display:block;margin:10px 0 4px;color:var(--mut);font-size:12px}
+select,input,textarea{width:100%;background:#0d0f12;color:var(--tx);border:1px solid #2f353d;border-radius:8px;padding:8px;font:12px ui-monospace,monospace;user-select:text}
+textarea{height:90px}
+.mini{padding:8px;font-size:12px;margin-top:6px;width:100%}
+.note{color:var(--mut);font-size:12px;line-height:1.5;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>DATASHOW BENQ · CONTROLE IR</h1>
+<div class="remote" id="remote"></div>
+<div class="status" id="status">Toque em um botão. O sinal NEC será gerado aqui.</div>
+
+<details>
+<summary>Códigos (para copiar)</summary>
+<label>Pronto Hex (último botão)</label><textarea id="pronto" readonly></textarea>
+<button class="mini" onclick="cp('pronto')">Copiar Pronto</button>
+<label>Raw (µs, marca/espaço)</label><textarea id="raw" readonly></textarea>
+<button class="mini" onclick="cp('raw')">Copiar Raw</button>
+</details>
+
+<details>
+<summary>Configurações do protocolo</summary>
+<label>Formato do endereço (Custom Code 0x0030)</label>
+<select id="fmt" onchange="redo()">
+<option value="ext">NEC estendido: endereço 0x0030 (bytes 30 00)</option>
+<option value="std">NEC padrão: endereço 0x30 + inverso (30 CF)</option>
+<option value="swap">Endereço 0x0030 invertido (00 30)</option>
+</select>
+<label>Código hexadecimal manual</label>
+<input id="man" placeholder="ex.: 4F" maxlength="2">
+<button class="mini" onclick="send('Manual',parseInt(man.value,16))">Enviar código manual</button>
+<p class="note">Se o projetor não responder, tente outro formato de endereço. Segundo o manual: 38 kHz, NEC, custom code 0x0030. Para ligar/desligar use os botões ON/OFF (0x4F / 0x4E).</p>
+</details>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const layout=[
+ {c:'c2',b:[['LIGAR',0x4F,'on'],['DESLIGAR',0x4E,'off']]},
+ {c:'c3',b:[['SOURCE',0x04],['ASPECT',0x13],['QUICK INSTALL',0x94],['PICTURE',0x2F],['LIGHT',0x30],['INFO',0x2B]]},
+ {dpad:1},
+ {c:'c3',b:[['BACK',0x85],['MENU',0x0F],['AUTO',0x08],['MUTE',0x14],['ECO BLANK',0x07],['FREEZE',0x03]]},
+ {sep:1},
+ {c:'c3',b:[['1',0x31],['2',0x32],['3',0x33],['4',0x34],['5',0x35],['6',0x36],['7',0x37],['8',0x38],['9',0x39],['ALL',0x2C],['0',0x3A],['ID SET',0x2E]]},
+ {c:'c3',b:[['ZOOM +',0x18],['ZOOM −',0x19],['3D',0x8D]]}
+];
+const rem=$('remote');
+layout.forEach(r=>{
+ if(r.sep){rem.insertAdjacentHTML('beforeend','<div class="sep"></div>');return}
+ const d=document.createElement('div');
+ if(r.dpad){
+  d.className='dpad';
+  [['',null],['▲',0x0B],['',null],['◀',0x0D],['OK',0x15,'ok'],['▶',0x0E],['',null],['▼',0x0C],['',null]]
+  .forEach(x=>{const b=document.createElement('button');if(x[1]===null){b.style.visibility='hidden'}else{b.textContent=x[0];if(x[2])b.className=x[2];b.onclick=()=>send(x[0],x[1])}d.appendChild(b)});
+ }else{
+  d.className='row '+r.c;
+  r.b.forEach(x=>{const b=document.createElement('button');b.textContent=x[0];if(x[2])b.className=x[2];b.onclick=()=>send(x[0],x[1]);d.appendChild(b)});
+ }
+ rem.appendChild(d);
+});
+
+let last=null;
+function frame(cmd){
+ const f=$('fmt').value;let a0,a1;
+ if(f==='std'){a0=0x30;a1=0xCF}else if(f==='swap'){a0=0x00;a1=0x30}else{a0=0x30;a1=0x00}
+ return [a0,a1,cmd&255,(~cmd)&255];
+}
+function timings(cmd){
+ const t=[9000,4500];
+ frame(cmd).forEach(byte=>{for(let i=0;i<8;i++){t.push(560);t.push((byte>>i)&1?1690:560)}});
+ t.push(560);t.push(40000);
+ return t;
+}
+function pronto(t){
+ const unit=26.3158,fr=Math.round(1e6/(38000*0.241246));
+ const h=n=>n.toString(16).toUpperCase().padStart(4,'0');
+ const w=[0,fr,t.length/2,0].map(h);
+ return w.concat(t.map(x=>h(Math.round(x/unit)))).join(' ');
+}
+function send(name,cmd){
+ if(isNaN(cmd)||cmd<0||cmd>255){$('status').textContent='Código inválido.';return}
+ if(navigator.vibrate)navigator.vibrate(25);
+ last={name,cmd};
+ const t=timings(cmd);
+ $('pronto').value=pronto(t);
+ $('raw').value=t.join(',');
+ const hex='0x'+cmd.toString(16).toUpperCase().padStart(2,'0');
+ let msg='<b>'+name+'</b> · comando '+hex+' · bytes '+frame(cmd).map(x=>x.toString(16).toUpperCase().padStart(2,'0')).join(' ')+' · 38 kHz';
+ try{
+  if(window.AndroidIR&&AndroidIR.transmit){msg+=AndroidIR.transmit(38000,t.join(','))?'<br>✔ transmitido via IR':'<br>✖ este celular não tem emissor IR (ou falhou o envio)';}
+  else msg+='<br>ℹ sem emissor IR no navegador: copie o código abaixo.';
+ }catch(e){msg+='<br>Erro ao transmitir: '+e.message}
+ $('status').innerHTML=msg;
+}
+function redo(){if(last)send(last.name,last.cmd)}
+function cp(id){const el=$(id);el.select();try{navigator.clipboard.writeText(el.value)}catch(e){document.execCommand('copy')}$('status').textContent='Copiado.'}
+</script>
+</body>
+</html>
